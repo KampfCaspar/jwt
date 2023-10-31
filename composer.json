@@ -1,0 +1,30 @@
+{
+  "name": "kampfcaspar/jwt",
+  "description": "JWT PHP library abstraction layer",
+  "homepage": "https://github.com/KampfCaspar/JWT",
+  "license": "AGPL-3.0-or-later",
+  "type": "library",
+  "require": {
+    "php": "^8.1"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^1.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "KampfCaspar\\JWT\\": "src/"
+    }
+  },
+  "keywords": [
+    "jwt",
+    "jws",
+    "jwe"
+  ],
+  "authors": [
+    {
+      "name": "KampfCaspar",
+      "email": "code@kampfcaspar.ch",
+      "role": "Developer"
+    }
+  ]
+}
