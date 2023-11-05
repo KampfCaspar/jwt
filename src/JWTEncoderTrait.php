@@ -27,7 +27,7 @@ trait JWTEncoderTrait
 	): string;
 
 	public function encode(
-		array $payload,
+		array|JWT $payload,
 		array $header = [],
 		array|string|null $additionalKeys = null,
 		?JWTSerializerEnum $serializer = null

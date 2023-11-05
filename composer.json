@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-or-later",
   "type": "library",
   "require": {
-    "php": "^8.1"
+    "php": "^8.1",
+    "psr/log": "^3.0.0"
   },
   "require-dev": {
     "phpstan/phpstan": "^1.10"

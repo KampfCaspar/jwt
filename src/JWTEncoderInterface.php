@@ -49,7 +49,7 @@ interface JWTEncoderInterface
 	 *
 	 * JWT payload must consist of a JSON object, represented by a PHP array.
 	 *
-	 * @param array<mixed>             $payload         octets to include in the JWT
+	 * @param array<mixed>|JWT         $payload         claims to encode
 	 * @param array<string,mixed>      $header          (optional) additional common JWT header claims
 	 * @param array<mixed>|string|null $additionalKeys  (optional) keys to sign/encode to, in addition to
 	 *                                                  any default keys
@@ -60,7 +60,7 @@ interface JWTEncoderInterface
 	 * @throws \DomainException                         if encoder setup is wrong/incomplete
 	 */
 	public function encode(
-		array $payload,
+		array|JWT $payload,
 		array $header = [],
 		array|string|null $additionalKeys = null,
 		?JWTSerializerEnum $serializer = null
