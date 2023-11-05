@@ -1,6 +1,8 @@
 vendor/
 build/
 /.idea/
+/.phpdoc/
+/var/
 
 /composer.phar
 
