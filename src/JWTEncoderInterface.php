@@ -11,56 +11,41 @@
 namespace KampfCaspar\JWT;
 
 /**
- * Interface for prepared JWT Encoders
+ * Interface for Prepared JWT Encoders
  *
- * The encoder object must be configured to encode an octet string to (either) JWT format upon
- * a single call to `encode`. Its pre-configuration would encompass keys, used cryptographic
- * algorithms and serialization.
+ * The encoder object must be configured for encoding to the supported JWT format
+ * and can then be given to any consumer that only calls `encode` with its individual
+ * payload.
+ * The configuration would encompass keys, used cryptographic algorithms and serialization.
+ * The consumer generally will not change the configuration but may present additional keys
+ * (allows for personalized encryption per recipient),
  */
 interface JWTEncoderInterface
 {
-	/** encode octet string to JWT
+	/** encode an array|JWT payload or binary string to JWT in token form
 	 *
-	 * Although JWT payload must consist of a JSON object, both JWS and JWE sign/encrypt
-	 * any octet string. In tokens for internal use, one could use a different payload encoding.
+	 * JWTs should consist of a JSON object but both JWS and JWE support any octet string.
+	 * It is therefore possible to use any payload type, e.g. for internal uses.
+	 *
+	 * The encode call accepts either a PHP array or {@see JWT} that will be encoded
+	 * in JSON - or alternatively just a binary string that is taken verbatim.
 	 *
 	 * @see https://datatracker.ietf.org/doc/html/rfc7519#section-3
 	 * @see https://datatracker.ietf.org/doc/html/rfc7516#section-1
 	 * @see https://datatracker.ietf.org/doc/html/rfc7515#section-1
 	 *
-	 * @param string                   $payload         octets to include in the JWT
+	 * @param array<mixed>|JWT|string  $payload         claims to encode
 	 * @param array<string,mixed>      $header          (optional) additional common JWT header claims
 	 * @param array<mixed>|string|null $additionalKeys  (optional) keys to sign/encode to, in addition to
 	 *                                                  any default keys
 	 * @param JWTSerializerEnum|null   $serializer      (optional) selection of non-default serializer
-	 * @return string                                   JWT in octets
-	 *
-	 * @throws \InvalidArgumentException                if an invalid header or keys are given
-	 * @throws \DomainException                         if encoder setup is wrong/incomplete
-	 */
-	public function encodeBinary(
-		string $payload,
-		array $header = [],
-		array|string|null $additionalKeys = null,
-		?JWTSerializerEnum $serializer = null
-	): string;
-
-	/** encode an array to JWT
-	 *
-	 * JWT payload must consist of a JSON object, represented by a PHP array.
-	 *
-	 * @param array<mixed>|JWT         $payload         claims to encode
-	 * @param array<string,mixed>      $header          (optional) additional common JWT header claims
-	 * @param array<mixed>|string|null $additionalKeys  (optional) keys to sign/encode to, in addition to
-	 *                                                  any default keys
-	 * @param JWTSerializerEnum|null   $serializer      (optional) selection of non-default serializer
-	 * @return string                                   JWT in octets
+	 * @return string                                   JWT token in octets
 	 *
 	 * @throws \InvalidArgumentException                if an invalid header or keys are given
 	 * @throws \DomainException                         if encoder setup is wrong/incomplete
 	 */
 	public function encode(
-		array|JWT $payload,
+		array|JWT|string $payload,
 		array $header = [],
 		array|string|null $additionalKeys = null,
 		?JWTSerializerEnum $serializer = null

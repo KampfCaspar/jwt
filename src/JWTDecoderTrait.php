@@ -18,15 +18,21 @@ namespace KampfCaspar\JWT;
  */
 trait JWTDecoderTrait
 {
-	abstract public function decodeBinary(string $token): string;
+	abstract public function decodeBinary(string $token): array;
 
-	public function decode(string $token): array {
-		$payload = $this->decodeBinary($token);
-		$res = json_decode($payload, true, 512, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-		if ($res === false) {
-			throw new \InvalidArgumentException('JWT seems not to contain JSON');
+	public function decode(string $token, ?JWT $jwt = null): array
+	{
+		[ $payload_json, $headers ] = $this->decodeBinary($token);
+		$payload = json_decode($payload_json, true,
+			512, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		if ($payload === false) {
+			throw new \InvalidArgumentException('JWT payload seems not to contain JSON');
 		}
-		return $res;
+		if ($jwt) {
+			$jwt->setClaims($payload);
+			$jwt->getHeaders()->setClaims($headers);
+		}
+		return $payload;
 	}
 
 }

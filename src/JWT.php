@@ -10,37 +10,47 @@
 
 namespace KampfCaspar\JWT;
 
+use KampfCaspar\JWT\ClaimReader\ClaimReaderInterface;
+use KampfCaspar\JWT\ValidityChecker\ValidityCheckerInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Psr\Log\LoggerInterface;
 
 /**
+ * Class representing a JWT JSON payload and optionally corresponding headers
+ *
  * @extends \ArrayObject<string,mixed>
  *
+ * minimal claim set
  * @property string $iss  Token Issuer
  * @property string $sub  Token Subject
  * @property string $aud  Token Audience
  * @property int    $iat  Token Issuance Timestamp (issued at)
  * @property int    $nbf  Token Start of Validity Timestamp (not before)
  * @property int    $exp  Token Expiry Timestamp (expire)
+ *
+ * @phpstan-consistent-constructor
  */
 class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, LoggerAwareInterface
 {
 	use LoggerAwareTrait;
 
-	/**
-	 * list of claims defined in JWT RFC
-	 * @see https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
+	/** collection of all claim readers
+	 * @var array<ClaimReaderInterface|callable>
+	 * @see self::addReader()
 	 */
-	final protected const CLAIMS_BASIC = [
-		'iss', 'sub', 'aud',
-		'iat', 'nbf', 'exp'
-	];
+	protected array $readers = [];
 
-	/**
-	 * list of claims supported by the class (to be overridden)
+	/** collection of all validty checkers
+	 * @var array<ValidityCheckerInterface|callable>
+	 * @see self::addValidityChecker()
 	 */
-	protected const CLAIMS = self::CLAIMS_BASIC;
+	protected array $checkers = [];
+
+	/** collection of all header claims
+	 * @var JWT
+	 */
+	protected JWT $headers;
 
 	/**
 	 * construct and optionally initialize JWT
@@ -56,46 +66,86 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 	}
 
 	/**
-	 * verify claim name, the tupe of its value and possibly the value as well
+	 * get headers collection
+	 */
+	public function getHeaders(): JWT
+	{
+		if (!isset($this->headers)) {
+			$this->headers = new static(logger: $this->logger);
+		}
+		return $this->headers;
+	}
+
+	/**
+	 * set new headers collection
+	 * @param JWT|iterable<string,mixed> $headers
+	 */
+	public function setHeaders(JWT|Iterable $headers): static
+	{
+		$this->headers = $headers instanceof JWT ? clone $headers : new static($headers, $this->logger);
+		return $this;
+	}
+
+	/**
+	 * add a claim reader for a field
 	 *
-	 * In subclasses, overwrite this method, check your own claims and then call parent
+	 * Each field (claim) can have a reader associated that ensures values set are
+	 * compatible.
+	 * @see ClaimReaderInterface
 	 *
-	 * @see https://datatracker.ietf.org/doc/html/rfc7519#section-4.1
+	 * @param string|iterable<string> $claims
+	 */
+	public function addReader(string|Iterable $claims, ClaimReaderInterface|callable $reader): static
+	{
+		if (is_string($claims)) {
+			$claims = (array)$claims;
+		}
+		foreach ($claims as $claim) {
+			if (!is_string($claim)) {
+				throw new \BadMethodCallException(sprintf(
+					'JWT claim names must be string, got %s',
+					gettype($claim)
+				));
+			}
+			$this->readers[$claim] = $reader;
+		}
+		return $this;
+	}
+
+	/**
+	 * verify the tupe of claim value and possibly the value as well
 	 *
 	 * @return mixed  claim value as correct type
 	 * @throws \InvalidArgumentException  if value cannot be cast and is somehow invalid
 	 */
 	protected function filterClaim(string $claim, mixed $value): mixed
 	{
-		switch ($claim) {
-			case 'iss':
-			case 'sub':
-			case 'aud':
-			case 'jti':
-				return (string)$value;
-			case 'exp':
-			case 'nbf':
-			case 'iat':
-				if ($value instanceof \DateTimeInterface) {
-					return $value->getTimestamp();
-				}
-				if (is_numeric($value)) {
-					return (int)$value;
-				}
-				throw new \InvalidArgumentException(sprintf(
-					'JWT claim "%s" must be parseable as NumericDate',
-					$claim
-				));
+		$type = is_object($value) ? get_class($value) : gettype($value);
+		$reader = $this->readers[$claim] ?? null;
+		if ($reader) {
+			$value = is_callable($reader) ? $reader($value) : $reader->read($value);
 		}
-		$this->logger?->info('unverified JWT claim {claim}', ['claim' => $claim]);
+		else {
+			$this->logger?->info('unlisted JWT claim {claim}', [
+				'claim' => $claim,
+				'value' => $value,
+			]);
+		}
+		if (is_null($value)) {
+			throw new \InvalidArgumentException(sprintf(
+				'Reading JWT claim "%s" failed with a "%s"',
+				$claim,
+				$type
+			));
+		}
 
 		return $value;
 	}
 
 	/**
-	 * assert that key is string and check if key is available in claims list
+	 * set a field (claim) to a specific value
 	 */
-	protected function assertKey(mixed $key): void
+	public function offsetSet(mixed $key, mixed $value): void
 	{
 		if (!is_string($key)) {
 			throw new \BadMethodCallException(sprintf(
@@ -103,44 +153,8 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 				gettype($key)
 			));
 		}
-		if (!in_array($key, static::CLAIMS, true)) {
-			$this->logger?->info('unlisted JWT claim {claim}', ['claim' => $key]);
-		}
-	}
-
-	public function offsetExists(mixed $key): bool
-	{
-		$this->assertKey($key);
-		return parent::offsetExists($key);
-	}
-
-	public function offsetGet(mixed $key): mixed
-	{
-		$this->assertKey($key);
-		return parent::offsetGet($key);
-	}
-
-	public function offsetSet(mixed $key, mixed $value): void
-	{
-		$this->assertKey($key);
-		// @phpstan-ignore-next-line as $key definitely is no longer null
 		$value = $this->filterClaim($key, $value);
 		parent::offsetSet($key, $value);
-	}
-
-	public function offsetUnset(mixed $key): void
-	{
-		$this->assertKey($key);
-		parent::offsetUnset($key);
-	}
-
-	/**
-	 * set claim (offset) with fluent interface
-	 */
-	public function setClaim(string $key, mixed $value): static
-	{
-		$this->offsetSet($key, $value);
-		return $this;
 	}
 
 	/**
@@ -155,6 +169,35 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 		return $this;
 	}
 
+	/**
+	 * add a validity checker to test the whole JWT upon request
+	 * @see ValidityCheckerInterface
+	 * @see self::assertValidity()
+	 */
+	public function addValidityChecker(ValidityCheckerInterface|callable $checker): static
+	{
+		$this->checkers[] = $checker;
+		return $this;
+	}
+
+	/**
+	 * assert validity of JWT by calling all ValidityCheckers
+	 */
+	public function assertValidity(): void
+	{
+		$errors = [];
+		foreach ($this->checkers as $checker) {
+			/** @var ?string $error */
+			$error = is_callable($checker) ? $checker($this) : $checker->falsify($this);
+			if ($error) {
+				$errors[] = $error;
+			}
+		}
+		if ($errors) {
+			throw new \DomainException(join('; ', $errors));
+		}
+	}
+
 	public function jsonSerialize(): mixed
 	{
 		return $this->getArrayCopy();
@@ -163,11 +206,13 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 	public function __toString(): string
 	{
 		try {
-			return \json_encode($this->getArrayCopy(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			return \json_encode($this, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 		}
+		// @codeCoverageIgnoreStart
 		catch (\Throwable $e) {
 			throw new \DomainException('error encoding to json', $e->getCode(), $e);
 		}
+		// @codeCoverageIgnoreEnd
 	}
 
 }

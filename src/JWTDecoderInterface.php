@@ -11,34 +11,30 @@
 namespace KampfCaspar\JWT;
 
 /**
- * Interface for prepared JWT Decoders
+ * Interface for Prepared JWT Decoders
  *
- * The decoder object must be configured to decode a JWT upon a single call to `encode`.
- * Its pre-configuration would encompass keys, used cryptographic
- * algorithms and serialization.
+ * The decoder object must be configured for decoding from the supported JWT format
+ * and can then be given to any consumer that only calls `decode` with its individual
+ *  payload.
+ *  The configuration would encompass keys, used cryptographic algorithms and serialization.
+ *  The consumer will not change the configuration.
  */
 interface JWTDecoderInterface
 {
-	/** decode a JWT to an octet string
+	/** decode a JWT in token form to an octet string
 	 *
-	 *  Although JWT payload must consist of a JSON object, both JWS and JWE sign/encrypt
-	 *  any octet string. In tokens for internal use, one could use a different payload encoding.
-	 *
-	 * @see https://datatracker.ietf.org/doc/html/rfc7519#section-3
-	 * @see https://datatracker.ietf.org/doc/html/rfc7516#section-1
-	 * @see https://datatracker.ietf.org/doc/html/rfc7515#section-1
-	 *
-	 * @param string $token JWT octet string
-	 * @return string       JWT payload as octet string
+	 * @param string $token               JWT token octet string
+	 * @return array{mixed, array<mixed>} an array of binary payload and header array
 	 *
 	 * @throws \InvalidArgumentException  if an invalid token is given or it does not validate
 	 * @throws \DomainException           if encoder setup is wrong/incomplete
 	 */
-	public function decodeBinary(string $token): string;
+	public function decodeBinary(string $token): array;
 
-	/** decode a JWT to a PHP array
+	/** decode a JWT in token form to a PHP array and optionally loads it into a JWT object
 	 *
-	 * JWT payload must consist of a JSON object, represented by a PHP array.
+	 * JWT payload must consist of a JSON object, representable in a PHP array.
+	 * If a prepared {@see JWT} is given, it's filled with body and header claims
 	 *
 	 * @param string $token JWT octet string
 	 * @return array<mixed> JWT payload
@@ -46,5 +42,5 @@ interface JWTDecoderInterface
 	 * @throws \InvalidArgumentException  if an invalid token is given or it does not validate
 	 * @throws \DomainException           if encoder setup is wrong/incomplete
 	 */
-	public function decode(string $token): array;
+	public function decode(string $token, ?JWT $jwt = null): array;
 }

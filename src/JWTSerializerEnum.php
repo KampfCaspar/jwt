@@ -11,12 +11,14 @@
 namespace KampfCaspar\JWT;
 
 /**
- * Identification of JWT serializers
+ * Identification of JWS/JWE serializers
  *
  * Both JWS and JWE support three types of serializers:
  *  * a `Compact` serializer returning an URL-safe token for one signature/recipient
- *  * a `Global JSON` serializer returning a JSON representation, supporting multiple signatures/recipients
- *  * a `Flattened JSON` serializer returning a slightly simplified JSON for only one signature/recipient
+ *  * a `Global JSON` serializer returning a JSON representation,
+ *    supporting multiple signatures/recipients
+ *  * a `Flattened JSON` serializer returning a slightly simplified JSON
+ *    for only one signature/recipient
  *
  * @see https://datatracker.ietf.org/doc/html/rfc7516#section-7
  * @see https://datatracker.ietf.org/doc/html/rfc7515#section-7
