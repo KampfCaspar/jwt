@@ -38,6 +38,14 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 {
 	use LoggerAwareTrait;
 
+	/** Default Filters Applied Upon Construction
+	 */
+	public const DEFAULT_FILTERS = [];
+
+	/** Default Validator Applied Upon Construction
+	 */
+	public const DEFAULT_VALIDATOR = null;
+
 	/** Array of Claim Filters
 	 * @var array<string,ValueFilterInterface>
 	 * @see self::addClaimFilter()
@@ -61,6 +69,12 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 		parent::__construct([], self::ARRAY_AS_PROPS);
 		if (!is_null($logger)) {
 			$this->setLogger($logger);
+		}
+		foreach (static::DEFAULT_FILTERS as $claim => $filter) {
+			$this->addClaimFilter($claim, $filter);
+		}
+		if (static::DEFAULT_VALIDATOR) {
+			$this->setValidator(static::DEFAULT_VALIDATOR);
 		}
 		$this->setClaims($claims);
 	}
