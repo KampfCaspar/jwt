@@ -10,14 +10,17 @@
 
 namespace KampfCaspar\JWT;
 
-use KampfCaspar\JWT\ClaimReader\ClaimReaderInterface;
-use KampfCaspar\JWT\ValidityChecker\ValidityCheckerInterface;
+use KampfCaspar\Filter\ArrayFilter;
+use KampfCaspar\Filter\ArrayFilterInterface;
+use KampfCaspar\Filter\Exception\FilteringException;
+use KampfCaspar\Filter\ValueFilter;
+use KampfCaspar\Filter\ValueFilterInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Psr\Log\LoggerInterface;
 
 /**
- * Class representing a JWT JSON payload and optionally corresponding headers
+ * JSON Object Payload and JWT Headers
  *
  * @extends \ArrayObject<string,mixed>
  *
@@ -35,26 +38,23 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 {
 	use LoggerAwareTrait;
 
-	/** collection of all claim readers
-	 * @var array<ClaimReaderInterface|callable>
-	 * @see self::addReader()
+	/** Array of Claim Filters
+	 * @var array<string,ValueFilterInterface>
+	 * @see self::addClaimFilter()
 	 */
-	protected array $readers = [];
+	protected array $claimFilters = [];
 
-	/** collection of all validty checkers
-	 * @var array<ValidityCheckerInterface|callable>
-	 * @see self::addValidityChecker()
+	/** ArrayFilter to Ensure JWT Validity
+	 * @see self::setValidator()
 	 */
-	protected array $checkers = [];
+	protected ArrayFilterInterface $validator;
 
-	/** collection of all header claims
-	 * @var JWT
+	/** Collection for JWT Header
+	 * @see self::setHeader()
 	 */
-	protected JWT $headers;
+	protected JWT $header;
 
-	/**
-	 * construct and optionally initialize JWT
-	 *
+	/** Construct New JWT
 	 * @param iterable<string,mixed> $claims
 	 */
 	public function __construct(Iterable $claims = [], ?LoggerInterface $logger = null) {
@@ -65,38 +65,32 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 		$this->setClaims($claims);
 	}
 
-	/**
-	 * get headers collection
+	/** Get JWT Header Collection
 	 */
-	public function getHeaders(): JWT
+	public function getHeader(): JWT
 	{
-		if (!isset($this->headers)) {
-			$this->headers = new static(logger: $this->logger);
+		if (!isset($this->header)) {
+			$this->header = new static(logger: $this->logger);
 		}
-		return $this->headers;
+		return $this->header;
 	}
 
-	/**
-	 * set new headers collection
-	 * @param JWT|iterable<string,mixed> $headers
+	/** Set a New JWT Header Collection
+	 * @param JWT|iterable<string,mixed> $header
 	 */
-	public function setHeaders(JWT|Iterable $headers): static
+	public function setHeader(JWT|Iterable $header): static
 	{
-		$this->headers = $headers instanceof JWT ? clone $headers : new static($headers, $this->logger);
+		$this->header = $header instanceof JWT ? $header : new static($header, $this->logger);
 		return $this;
 	}
 
 	/**
-	 * add a claim reader for a field
-	 *
-	 * Each field (claim) can have a reader associated that ensures values set are
-	 * compatible.
-	 * @see ClaimReaderInterface
-	 *
+	 * Add a ValueFilter To One/Many Claims
 	 * @param string|iterable<string> $claims
 	 */
-	public function addReader(string|Iterable $claims, ClaimReaderInterface|callable $reader): static
+	public function addClaimFilter(string|iterable $claims, mixed $filter): static
 	{
+		$filter = ValueFilter::createFilter($filter);
 		if (is_string($claims)) {
 			$claims = (array)$claims;
 		}
@@ -107,43 +101,47 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 					gettype($claim)
 				));
 			}
-			$this->readers[$claim] = $reader;
+			$this->claimFilters[$claim] = $filter;
 		}
 		return $this;
 	}
 
 	/**
-	 * verify the tupe of claim value and possibly the value as well
-	 *
-	 * @return mixed  claim value as correct type
-	 * @throws \InvalidArgumentException  if value cannot be cast and is somehow invalid
+	 * Filter a Value While Setting the Claim
+	 * @throws \InvalidArgumentException  if value is somehow invalid and uncorrectable
 	 */
 	protected function filterClaim(string $claim, mixed $value): mixed
 	{
-		$type = is_object($value) ? get_class($value) : gettype($value);
-		$reader = $this->readers[$claim] ?? null;
-		if ($reader) {
-			$value = is_callable($reader) ? $reader($value) : $reader->read($value);
+		$filter = $this->claimFilters[$claim] ?? null;
+		if ($filter) {
+			try {
+				$value = $filter->filterValue($value);
+			}
+			catch (FilteringException $e) {
+				throw new \InvalidArgumentException(sprintf(
+					'invalid value for claim %s on JWT with ID %s',
+					$claim,
+					$this->offsetGet('jti') ?? '(unset)'
+				), previous: $e);
+			}
+			if (is_null($value)) {
+				$this->logger?->error('invalid value for claim {claim} on JWT with ID {jti}', [
+					'claim' => $claim,
+					'jti' => $this->offsetGet('jti') ?? '(unset)'
+				]);
+			}
 		}
 		else {
-			$this->logger?->info('unlisted JWT claim {claim}', [
+			$this->logger?->info('unfiltered claim {claim} on JWT with ID {jti}', [
 				'claim' => $claim,
-				'value' => $value,
+				'jti' => $this->offsetGet('jti') ?? '(unset)'
 			]);
-		}
-		if (is_null($value)) {
-			throw new \InvalidArgumentException(sprintf(
-				'Reading JWT claim "%s" failed with a "%s"',
-				$claim,
-				$type
-			));
 		}
 
 		return $value;
 	}
 
-	/**
-	 * set a field (claim) to a specific value
+	/** Set a Claim to a Specific Value
 	 */
 	public function offsetSet(mixed $key, mixed $value): void
 	{
@@ -153,12 +151,19 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 				gettype($key)
 			));
 		}
-		$value = $this->filterClaim($key, $value);
-		parent::offsetSet($key, $value);
+		if (!is_null($value)) {
+			$value = $this->filterClaim($key, $value);
+		}
+		if (is_null($value)) {
+			$this->offsetUnset($key);
+		}
+		else {
+			parent::offsetSet($key, $value);
+		}
 	}
 
 	/**
-	 * set multiple claims with a fluent interface
+	 * Set Multiple Claims
 	 * @param iterable<string,mixed> $claims
 	 */
 	public function setClaims(Iterable $claims): static
@@ -170,31 +175,40 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 	}
 
 	/**
-	 * add a validity checker to test the whole JWT upon request
-	 * @see ValidityCheckerInterface
-	 * @see self::assertValidity()
+	 * Set the ArrayFilter that checks JWT for its Validity
 	 */
-	public function addValidityChecker(ValidityCheckerInterface|callable $checker): static
+	public function setValidator(mixed $checker): static
 	{
-		$this->checkers[] = $checker;
+		$this->validator = ArrayFilter::createFilter($checker);
 		return $this;
 	}
 
 	/**
-	 * assert validity of JWT by calling all ValidityCheckers
+	 * Assert Validity of JWT
 	 */
-	public function assertValidity(): void
+	public function validate(): void
 	{
-		$errors = [];
-		foreach ($this->checkers as $checker) {
-			/** @var ?string $error */
-			$error = is_callable($checker) ? $checker($this) : $checker->falsify($this);
-			if ($error) {
-				$errors[] = $error;
+		if (isset($this->validator)) {
+			try {
+				$errors = $this->validator->filterArray($this);
+			}
+			catch (FilteringException $e) {
+				throw new \DomainException(sprintf(
+					'invalid JWT with ID %s',
+					$this->offsetGet('jti') ?? '(unset)'
+				), $e->getCode(), $e);
+			}
+			if ($errors) {
+				$this->logger?->warning('invalid JWT with ID {jti}', [
+					'errors' => $errors,
+					'jti' => $this->offsetGet('jti') ?? '(unset)'
+				]);
 			}
 		}
-		if ($errors) {
-			throw new \DomainException(join('; ', $errors));
+		else {
+			$this->logger?->info('JWT with ID {jti} has no validator', [
+				'jti' => $this->offsetGet('jti') ?? '(unset)'
+			]);
 		}
 	}
 
@@ -206,11 +220,11 @@ class JWT extends \ArrayObject implements \Stringable, \JsonSerializable, Logger
 	public function __toString(): string
 	{
 		try {
-			return \json_encode($this, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			return json_encode($this, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 		}
 		// @codeCoverageIgnoreStart
 		catch (\Throwable $e) {
-			throw new \DomainException('error encoding to json', $e->getCode(), $e);
+			throw new \LogicException('error encoding to json', $e->getCode(), $e);
 		}
 		// @codeCoverageIgnoreEnd
 	}

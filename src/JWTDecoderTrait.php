@@ -30,7 +30,7 @@ trait JWTDecoderTrait
 		}
 		if ($jwt) {
 			$jwt->setClaims($payload);
-			$jwt->getHeaders()->setClaims($headers);
+			$jwt->getHeader()->setClaims($headers);
 		}
 		return $payload;
 	}

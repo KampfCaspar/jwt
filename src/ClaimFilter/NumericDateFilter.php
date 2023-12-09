@@ -8,21 +8,22 @@
  * @author KampfCaspar <code@kampfcaspar.ch>
  */
 
-namespace KampfCaspar\Test\JWT\Fixtures;
+namespace KampfCaspar\JWT\ClaimFilter;
 
+use KampfCaspar\Filter\ValueFilter\IntegerValueFilter;
 use Psr\Clock\ClockInterface;
 
-class FixedClock implements ClockInterface
+class NumericDateFilter extends IntegerValueFilter
 {
-	protected \DateTimeImmutable $dt;
-
-	public function __construct(int $timestamp)
+	protected function convertValue(mixed $value): int
 	{
-		$this->dt = (new \DateTimeImmutable())->setTimestamp($timestamp);
+		if ($value instanceof ClockInterface) {
+			$value = $value->now()->getTimestamp();
+		}
+		elseif ($value instanceof \DateTimeInterface) {
+			$value = $value->getTimestamp();
+		}
+		return $value;
 	}
 
-	public function now(): \DateTimeImmutable
-	{
-		return $this->dt;
-	}
 }

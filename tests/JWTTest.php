@@ -10,6 +10,7 @@
 
 namespace KampfCaspar\Test\JWT;
 
+use KampfCaspar\Filter\ArrayFilter;
 use KampfCaspar\JWT\JWT;
 use PHPUnit\Framework\TestCase;
 
@@ -23,7 +24,7 @@ class JWTTest extends TestCase
 		$this->assertArrayHasKey('alpha', $jwt);
 		$this->assertEquals('beta', $jwt['alpha']);
 		$this->expectException(\BadMethodCallException::class);
-		$jwt[new \DateTimeImmutable()] = 'errpr';
+		$jwt[new \DateTimeImmutable()] = 'error';
 	}
 
 	public function testSetClaims(): void
@@ -37,8 +38,8 @@ class JWTTest extends TestCase
 	public function testReaders(): void
 	{
 		$jwt = new JWT();
-		$jwt->addReader('iss', fn(mixed $x) => $x + 1);
-		$jwt->addReader('sub', fn(mixed $x) => null);
+		$jwt->addClaimFilter('iss', fn(mixed $x) => $x + 1);
+		$jwt->addClaimFilter('sub', fn(mixed $x) => null);
 
 		$jwt['iss'] = 3;
 		$this->assertEquals(4, $jwt['iss']);
@@ -51,36 +52,33 @@ class JWTTest extends TestCase
 	{
 		$jwt = new JWT();
 		$this->expectException(\BadMethodCallException::class);
-		$jwt->addReader([new \DateTimeImmutable()], fn(mixed $x) => $x + 1);
+		$jwt->addClaimFilter([new \DateTimeImmutable()], fn(mixed $x) => $x + 1);
 	}
 
 	public function testGetHeaders(): void
 	{
 		$jwt = new JWT();
-		$this->assertInstanceOf(JWT::class, $jwt->getHeaders());
+		$this->assertInstanceOf(JWT::class, $jwt->getHeader());
 	}
 
 	public function testSetHeaders(): void
 	{
 		$jwt = new JWT();
-		$jwt->setHeaders(['alg' => 'ES256', 'cty' => 'JWT']);
-		$headers = $jwt->getHeaders();
+		$jwt->setHeader(['alg' => 'ES256', 'cty' => 'JWT']);
+		$headers = $jwt->getHeader();
 		$this->assertArrayHasKey('alg', $headers);
 		$this->assertArrayHasKey('cty', $headers);
-		$headers = new JWT();
-		$jwt->setHeaders($headers);
-		$this->assertNotSame($headers, $jwt->getHeaders());
 	}
 
-	public function testAssertValidity(): void
+	public function testValidate(): void
 	{
 		$jwt = new JWT();
-		$jwt->addValidityChecker( fn(JWT $x) => ($x['valid'] > 0 ? null : 'invalid'));
-		$jwt['valid'] = 1;
-		$jwt->assertValidity();
-		$jwt['valid'] = -1;
+		$jwt->validate();
+		$jwt->setValidator( ArrayFilter::createFilter(fn($x) => []));
+		$jwt->validate();
+		$jwt->setValidator( ArrayFilter::createFilter(fn($x) => ['hallo']));
 		$this->expectException(\DomainException::class);
-		$jwt->assertValidity();
+		$jwt->validate();
 	}
 
 	public function test__toString(): void
